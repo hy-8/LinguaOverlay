@@ -1,0 +1,30 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Local runtime and downloaded models
+.runtime/
+models/
+
+# Runtime output
+logs/
+*.log
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# Editors and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

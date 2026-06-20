@@ -1,0 +1,19 @@
+{
+  "audio_device_index": null,
+  "target_sample_rate": 16000,
+  "whisper_model": "large-v3-turbo",
+  "whisper_device": "cuda",
+  "whisper_compute_type": "float16",
+  "source_language": "auto",
+  "window_seconds": 10.0,
+  "hop_seconds": 1.5,
+  "finalize_delay_seconds": 1.2,
+  "translation_hold_seconds": 3.2,
+  "show_original": true,
+  "font_size_original": 20,
+  "font_size_translation": 27,
+  "background_opacity": 0.78,
+  "minimax_base_url": "https://api.minimax.io/v1",
+  "minimax_model": "MiniMax-M2.7-highspeed",
+  "translation_timeout_seconds": 30.0
+}
