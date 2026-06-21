@@ -130,6 +130,7 @@ MINIMAX_MODEL=MiniMax-M2.7-highspeed
 - 拖动字幕窗口空白处，可以调整字幕位置。
 - 点击“原文”，可以显示或隐藏原文。
 - 点击“锁定”，字幕窗口将进入鼠标穿透状态。
+- 点击右上角红色 `✕`，可以直接关闭实时字幕程序。
 - 锁定后可通过 Windows 系统托盘菜单解除锁定或退出。
 - 字幕字体、透明度、语言和模型配置位于
   [`config/settings.json`](config/settings.json)。

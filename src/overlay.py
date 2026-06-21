@@ -58,6 +58,14 @@ class OverlayWindow(QWidget):
         self.lock_button.setCheckable(True)
         self.lock_button.clicked.connect(self.set_locked)
         controls.addWidget(self.lock_button)
+
+        self.close_button = QPushButton("✕")
+        self.close_button.setObjectName("closeButton")
+        self.close_button.setToolTip("关闭实时字幕")
+        self.close_button.setAccessibleName("关闭实时字幕")
+        self.close_button.setFixedSize(30, 30)
+        self.close_button.clicked.connect(self._quit)
+        controls.addWidget(self.close_button)
         root.addLayout(controls)
 
         self.original_label = QLabel("等待音频…")
@@ -91,6 +99,21 @@ class OverlayWindow(QWidget):
                 padding: 4px 10px;
             }
             QPushButton:checked { background: rgba(64, 140, 255, 100); }
+            QPushButton#closeButton {
+                color: white;
+                background: rgba(220, 55, 65, 170);
+                border: 1px solid rgba(255, 120, 125, 150);
+                border-radius: 15px;
+                font-size: 17px;
+                font-weight: 700;
+                padding: 0;
+            }
+            QPushButton#closeButton:hover {
+                background: rgba(245, 65, 75, 230);
+            }
+            QPushButton#closeButton:pressed {
+                background: rgba(175, 35, 45, 240);
+            }
             """
         )
 
