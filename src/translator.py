@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
@@ -18,6 +20,14 @@ def clean_model_output(text: str) -> str:
     return cleaned
 
 
+def clean_stream_output(text: str) -> str:
+    lower = text.lower()
+    think_start = lower.find("<think>")
+    if think_start >= 0 and "</think>" not in lower[think_start:]:
+        return clean_model_output(text[:think_start])
+    return clean_model_output(text)
+
+
 @dataclass(slots=True)
 class TranslationContext:
     source: str
@@ -28,6 +38,16 @@ class MockTranslator:
     def translate(self, text: str, context: list[TranslationContext]) -> str:
         del context
         return f"【模拟翻译】{text}"
+
+    def translate_stream(
+        self,
+        text: str,
+        context: list[TranslationContext],
+        on_partial: Callable[[str], None],
+    ) -> str:
+        result = self.translate(text, context)
+        on_partial(result)
+        return result
 
     def close(self) -> None:
         return None
@@ -40,8 +60,10 @@ class MiniMaxTranslator:
         base_url: str,
         model: str,
         timeout_seconds: float,
+        context_items: int = 2,
     ) -> None:
         self.model = model
+        self.context_items = context_items
         self.client = httpx.Client(
             base_url=base_url.rstrip("/") + "/",
             headers={"Authorization": f"Bearer {api_key}"},
@@ -49,36 +71,75 @@ class MiniMaxTranslator:
         )
 
     def translate(self, text: str, context: list[TranslationContext]) -> str:
+        return self.translate_stream(text, context, lambda _: None)
+
+    def _payload(
+        self,
+        text: str,
+        context: list[TranslationContext],
+        *,
+        stream: bool,
+    ) -> dict:
         context_lines = []
-        for item in context[-4:]:
+        for item in context[-self.context_items :]:
             context_lines.append(f"原文：{item.source}\n译文：{item.translation}")
         context_block = "\n\n".join(context_lines) or "无"
-        response = self.client.post(
+        return {
+            "model": self.model,
+            "temperature": 0.0,
+            "max_tokens": 256,
+            "stream": stream,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "你是低延迟实时字幕翻译器。将日语或英语翻译成自然、简洁的简体中文。"
+                        "保留人名和语气，不解释，不添加注释，只输出译文。"
+                        "输入可能是短句片段，应结合上下文直接翻译。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"最近上下文：\n{context_block}\n\n待翻译原文：\n{text}",
+                },
+            ],
+        }
+
+    def translate_stream(
+        self,
+        text: str,
+        context: list[TranslationContext],
+        on_partial: Callable[[str], None],
+    ) -> str:
+        raw_content = ""
+        last_partial = ""
+        with self.client.stream(
+            "POST",
             "chat/completions",
-            json={
-                "model": self.model,
-                "temperature": 0.1,
-                "max_tokens": 500,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "你是实时影视字幕翻译器。将日语或英语翻译成自然、简洁的简体中文字幕。"
-                            "保留人名和语气，不解释，不添加注释，只输出译文。"
-                            "输入可能是尚未结束的短句，应结合上下文合理翻译。"
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": f"最近上下文：\n{context_block}\n\n待翻译原文：\n{text}",
-                    },
-                ],
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
-        content = payload["choices"][0]["message"]["content"]
-        translation = clean_model_output(content)
+            json=self._payload(text, context, stream=True),
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if not data or data == "[DONE]":
+                    continue
+                chunk = json.loads(data)
+                choices = chunk.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta") or {}
+                content = delta.get("content")
+                if not isinstance(content, str) or not content:
+                    continue
+                raw_content += content
+                partial = clean_stream_output(raw_content)
+                if partial and partial != last_partial:
+                    last_partial = partial
+                    on_partial(partial)
+
+        translation = clean_model_output(raw_content)
         if not translation:
             raise RuntimeError("MiniMax 返回了空译文")
         return translation

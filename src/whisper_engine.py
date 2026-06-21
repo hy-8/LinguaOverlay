@@ -34,6 +34,7 @@ class WhisperEngine:
         self.compute_type = compute_type
         self.download_root = download_root
         self._model = None
+        self._detected_language: str | None = None
 
     def load(self) -> None:
         from faster_whisper import WhisperModel
@@ -45,12 +46,24 @@ class WhisperEngine:
             compute_type=self.compute_type,
             download_root=str(self.download_root),
         )
+        warmup_segments, _ = self._model.transcribe(
+            np.zeros(16000, dtype=np.float32),
+            language="en",
+            beam_size=1,
+            vad_filter=False,
+            condition_on_previous_text=False,
+        )
+        list(warmup_segments)
 
     def transcribe(self, audio: np.ndarray, language: str) -> list[SegmentResult]:
         if self._model is None:
             raise RuntimeError("Whisper 模型尚未加载")
-        selected_language = None if language == "auto" else language
-        segments, _ = self._model.transcribe(
+        selected_language = (
+            self._detected_language
+            if language == "auto" and self._detected_language
+            else None if language == "auto" else language
+        )
+        segments, info = self._model.transcribe(
             audio,
             language=selected_language,
             beam_size=1,
@@ -58,12 +71,19 @@ class WhisperEngine:
             temperature=0.0,
             vad_filter=True,
             vad_parameters={
-                "min_silence_duration_ms": 350,
-                "speech_pad_ms": 180,
+                "min_silence_duration_ms": 200,
+                "speech_pad_ms": 80,
             },
             word_timestamps=True,
             condition_on_previous_text=False,
         )
+        if (
+            language == "auto"
+            and self._detected_language is None
+            and info.language in {"ja", "en"}
+            and info.language_probability >= 0.75
+        ):
+            self._detected_language = info.language
         results: list[SegmentResult] = []
         for segment in segments:
             words = [

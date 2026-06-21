@@ -42,7 +42,7 @@ def join_word_tokens(tokens: list[str]) -> str:
 
 
 def _normalize_token(token: str) -> str:
-    return re.sub(r"\s+", "", token).casefold()
+    return re.sub(r"[\W_]+", "", token, flags=re.UNICODE).casefold()
 
 
 class WordStabilizer:
@@ -103,18 +103,32 @@ class WordStabilizer:
 class UtteranceAssembler:
     TERMINAL_PATTERN = re.compile(r"[。！？!?\.][”’」』】）)]?\s*$")
 
-    def __init__(self, max_hold_seconds: float) -> None:
+    def __init__(
+        self,
+        max_hold_seconds: float,
+        max_buffer_seconds: float | None = None,
+        max_chars: int = 100,
+    ) -> None:
         self.max_hold_seconds = max_hold_seconds
+        self.max_buffer_seconds = max_buffer_seconds
+        self.max_chars = max_chars
         self._pending = ""
+        self._started_at = 0.0
         self._updated_at = 0.0
 
     def add(self, text: str, now: float | None = None) -> str | None:
         if not text:
             return None
         current = time.monotonic() if now is None else now
+        if not self._pending:
+            self._started_at = current
         self._pending = join_word_tokens([self._pending, text])
         self._updated_at = current
-        if self.TERMINAL_PATTERN.search(self._pending) or len(self._pending) >= 100:
+        if (
+            self.TERMINAL_PATTERN.search(self._pending)
+            or len(self._pending) >= self.max_chars
+            or self._buffer_expired(current)
+        ):
             return self.flush()
         return None
 
@@ -122,12 +136,23 @@ class UtteranceAssembler:
         if not self._pending:
             return None
         current = time.monotonic() if now is None else now
-        if current - self._updated_at >= self.max_hold_seconds:
+        if (
+            current - self._updated_at >= self.max_hold_seconds
+            or self._buffer_expired(current)
+        ):
             return self.flush()
         return None
+
+    def _buffer_expired(self, current: float) -> bool:
+        return bool(
+            self.max_buffer_seconds is not None
+            and self._started_at
+            and current - self._started_at >= self.max_buffer_seconds
+        )
 
     def flush(self) -> str | None:
         text = self._pending.strip()
         self._pending = ""
+        self._started_at = 0.0
         self._updated_at = 0.0
         return text or None

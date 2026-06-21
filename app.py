@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -55,20 +56,25 @@ def main() -> int:
 
     bridge = UiBridge()
     overlay = OverlayWindow(settings)
+    smoke_started = time.monotonic()
 
     def report_status(text: str) -> None:
         if args.smoke_seconds:
-            print(f"[status] {text}", flush=True)
+            print(f"[{time.monotonic() - smoke_started:06.2f}s] [status] {text}", flush=True)
         bridge.status.emit(text)
 
     def report_preview(text: str) -> None:
         if args.smoke_seconds and text:
-            print(f"[preview] {text}", flush=True)
+            print(f"[{time.monotonic() - smoke_started:06.2f}s] [preview] {text}", flush=True)
         bridge.preview.emit(text)
 
     def report_subtitle(original: str, translation: str) -> None:
         if args.smoke_seconds:
-            print(f"[subtitle] {original} -> {translation}", flush=True)
+            print(
+                f"[{time.monotonic() - smoke_started:06.2f}s] "
+                f"[subtitle] {original} -> {translation}",
+                flush=True,
+            )
         bridge.subtitle.emit(original, translation)
 
     pipeline = RealtimePipeline(

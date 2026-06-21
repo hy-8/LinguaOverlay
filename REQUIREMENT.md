@@ -221,8 +221,11 @@ $env:CONDA_EXE = "C:\Users\你的用户名\miniconda3\Scripts\conda.exe"
 可以尝试：
 
 - 固定 `source_language` 为 `ja` 或 `en`
-- 将模型改为 `medium` 或 `small`
-- 降低 `window_seconds`
+- 保持 `window_seconds` 为 5 秒左右，不要恢复到 10 秒以上
+- 将 `hop_seconds` 保持在 `0.4`～`0.7` 秒
+- 确认 `translation_stream` 为 `true`
+- 网络较慢时继续使用 `MiniMax-M2.7-highspeed`
+- 显存或算力不足时将模型改为 `medium` 或 `small`
 - 确认程序正在使用 CUDA，而不是 CPU
 
 ## 9. GitHub 上传检查
