@@ -17,6 +17,7 @@
   "translation_stream": true,
   "translation_context_items": 2,
   "subtitle_history_items": 2,
+  "translation_provider": "auto",
   "show_original": true,
   "font_size_original": 20,
   "font_size_translation": 27,

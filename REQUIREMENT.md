@@ -122,9 +122,9 @@ CPU 模式建议从 `small` 模型开始，不建议直接运行 `large-v3-turbo
 不要手动把 `.runtime` 提交到 GitHub。其他用户应在自己的电脑上运行安装脚本
 生成环境。
 
-## 6. MiniMax API
+## 6. 翻译 API
 
-MiniMax API Key 是可选项：
+翻译 API Key 是可选项：
 
 - 配置 Key：显示真实中文字幕。
 - 不配置 Key：可使用 `-Mock` 测试音频捕获和语音识别。
@@ -136,7 +136,20 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-中国大陆账号示例：
+推荐的 Qwen-MT-Lite 配置：
+
+```dotenv
+TRANSLATION_PROVIDER=qwen
+QWEN_API_KEY=your_api_key_here
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_MODEL=qwen-mt-lite
+```
+
+`qwen-mt-lite` 是面向低延迟简单翻译场景的专用模型。北京地域和新加坡地域的
+API Key 不可混用。若返回 `invalid_api_key`，应在对应地域的阿里云百炼控制台
+重新创建 Key。
+
+MiniMax 中国大陆账号示例：
 
 ```dotenv
 MINIMAX_API_KEY=your_api_key_here
@@ -153,6 +166,9 @@ MINIMAX_MODEL=MiniMax-M2.7-highspeed
 ```
 
 不要把真实密钥写入 `.env.example`、README、源码或截图。
+
+同时配置 Qwen 与 MiniMax 时，程序会在启动时探测 Qwen；如果 Qwen Key 无效或
+服务不可用，将自动固定使用 MiniMax，避免每条字幕重复等待失败请求。
 
 ## 7. 完整安装流程
 

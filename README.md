@@ -4,13 +4,13 @@
 
 ### Windows 实时双语桌面字幕
 
-捕获电脑正在播放的日语或英语，使用本地 Whisper 识别，调用 MiniMax
+捕获电脑正在播放的日语或英语，使用本地 Whisper 识别，调用 Qwen-MT 或 MiniMax
 翻译成中文字幕，并以可置顶、可穿透的悬浮字幕显示在桌面上。
 
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Whisper](https://img.shields.io/badge/ASR-faster--whisper-7C3AED)
-![MiniMax](https://img.shields.io/badge/Translation-MiniMax-00A67E)
+![Translation](https://img.shields.io/badge/Translation-Qwen--MT%20%7C%20MiniMax-00A67E)
 ![CUDA](https://img.shields.io/badge/GPU-CUDA%2012.8-76B900?logo=nvidia)
 
 **本地识别 · AI 翻译 · 双语字幕 · 隐私友好**
@@ -29,7 +29,7 @@ LinguaOverlay 面向观看日剧、动画、直播、课程、会议和英文视
 | --- | --- |
 | 系统音频捕获 | 通过 Windows WASAPI Loopback 捕获耳机或扬声器声音 |
 | 本地语音识别 | 使用 `faster-whisper` 在本机识别日语和英语 |
-| AI 中文字幕 | 将稳定句子发送给 MiniMax，生成自然的简体中文字幕 |
+| AI 中文字幕 | 优先使用轻量 Qwen-MT-Lite，MiniMax 可作为自动回退 |
 | 双语显示 | 支持同时显示原文和译文，也可以隐藏原文 |
 | 桌面悬浮窗 | 无边框、始终置顶、可拖动、可调透明度 |
 | 鼠标穿透 | 锁定后不会影响操作视频播放器或游戏 |
@@ -44,13 +44,13 @@ flowchart LR
     A["电脑播放音频"] --> B["WASAPI 回环录音"]
     B --> C["本地 faster-whisper"]
     C --> D["稳定分句与去重"]
-    D --> E["MiniMax 文本翻译"]
+    D --> E["Qwen-MT / MiniMax 文本翻译"]
     E --> F["桌面双语悬浮字幕"]
 ```
 
 > [!NOTE]
-> 原始音频不会发送给 MiniMax。语音识别在本机完成，只有识别后的文本会发送到
-> MiniMax 翻译接口。
+> 原始音频不会发送给翻译 API。语音识别在本机完成，只有识别后的文本会发送到
+> 当前配置的 Qwen-MT 或 MiniMax 翻译接口。
 
 ## 快速开始
 
@@ -80,14 +80,23 @@ CPU 模式只需运行：
 
 然后按照 [REQUIREMENT.md](REQUIREMENT.md) 修改 CPU 配置。
 
-### 3. 配置 MiniMax
+### 3. 配置翻译 API
 
 ```powershell
 Copy-Item .env.example .env
 notepad .env
 ```
 
-填写自己的密钥：
+推荐配置 Qwen-MT-Lite：
+
+```dotenv
+TRANSLATION_PROVIDER=qwen
+QWEN_API_KEY=your_api_key_here
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_MODEL=qwen-mt-lite
+```
+
+也可以保留 MiniMax 作为自动回退：
 
 ```dotenv
 MINIMAX_API_KEY=your_api_key_here
@@ -97,6 +106,7 @@ MINIMAX_MODEL=MiniMax-M2.7-highspeed
 
 - 中国大陆 MiniMax 账号通常使用 `https://api.minimaxi.com/v1`
 - 海外账号通常使用 `https://api.minimax.io/v1`
+- `TRANSLATION_PROVIDER=auto` 会优先使用 Qwen，启动探测失败时切换到 MiniMax
 - `.env` 已被 Git 忽略，不会随正常提交上传
 
 ### 4. 启动
@@ -151,7 +161,7 @@ MINIMAX_MODEL=MiniMax-M2.7-highspeed
 - NVIDIA GeForce RTX 5060 Laptop GPU 8GB
 - CUDA 12.8 + cuDNN 9
 - `large-v3-turbo`
-- MiniMax `MiniMax-M2.7-highspeed`
+- Qwen `qwen-mt-lite` 或 MiniMax `MiniMax-M2.7-highspeed`
 
 默认 GPU 配置：
 

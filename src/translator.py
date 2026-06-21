@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -146,3 +147,150 @@ class MiniMaxTranslator:
 
     def close(self) -> None:
         self.client.close()
+
+
+class QwenMTTranslator:
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        model: str,
+        timeout_seconds: float,
+    ) -> None:
+        self.model = model
+        self.client = httpx.Client(
+            base_url=base_url.rstrip("/") + "/",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout_seconds,
+        )
+
+    def _payload(self, text: str, *, stream: bool) -> dict:
+        return {
+            "model": self.model,
+            "stream": stream,
+            "messages": [{"role": "user", "content": text}],
+            "translation_options": {
+                "source_lang": "auto",
+                "target_lang": "Chinese",
+            },
+        }
+
+    def translate(self, text: str, context: list[TranslationContext]) -> str:
+        del context
+        response = self.client.post(
+            "chat/completions",
+            json=self._payload(text, stream=False),
+        )
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
+        translation = clean_model_output(content)
+        if not translation:
+            raise RuntimeError("Qwen-MT 返回了空译文")
+        return translation
+
+    def translate_stream(
+        self,
+        text: str,
+        context: list[TranslationContext],
+        on_partial: Callable[[str], None],
+    ) -> str:
+        del context
+        raw_content = ""
+        last_partial = ""
+        with self.client.stream(
+            "POST",
+            "chat/completions",
+            json=self._payload(text, stream=True),
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if not data or data == "[DONE]":
+                    continue
+                chunk = json.loads(data)
+                choices = chunk.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta") or {}
+                content = delta.get("content")
+                if not isinstance(content, str) or not content:
+                    continue
+                raw_content += content
+                partial = clean_model_output(raw_content)
+                if partial and partial != last_partial:
+                    last_partial = partial
+                    on_partial(partial)
+
+        translation = clean_model_output(raw_content)
+        if not translation:
+            raise RuntimeError("Qwen-MT 返回了空译文")
+        return translation
+
+    def close(self) -> None:
+        self.client.close()
+
+
+class FallbackTranslator:
+    def __init__(
+        self,
+        primary,
+        fallback,
+        primary_name: str,
+        fallback_name: str,
+    ) -> None:
+        self.primary = primary
+        self.fallback = fallback
+        self.primary_name = primary_name
+        self.fallback_name = fallback_name
+        self._primary_enabled = True
+        self._lock = threading.Lock()
+
+    @property
+    def active_name(self) -> str:
+        with self._lock:
+            return self.primary_name if self._primary_enabled else self.fallback_name
+
+    def prepare(self) -> bool:
+        try:
+            self.primary.translate("Hello.", [])
+            return True
+        except Exception:
+            self._disable_primary()
+            return False
+
+    def _disable_primary(self) -> None:
+        with self._lock:
+            self._primary_enabled = False
+
+    def _use_primary(self) -> bool:
+        with self._lock:
+            return self._primary_enabled
+
+    def translate(self, text: str, context: list[TranslationContext]) -> str:
+        if not self._use_primary():
+            return self.fallback.translate(text, context)
+        try:
+            return self.primary.translate(text, context)
+        except Exception:
+            self._disable_primary()
+            return self.fallback.translate(text, context)
+
+    def translate_stream(
+        self,
+        text: str,
+        context: list[TranslationContext],
+        on_partial: Callable[[str], None],
+    ) -> str:
+        if not self._use_primary():
+            return self.fallback.translate_stream(text, context, on_partial)
+        try:
+            return self.primary.translate_stream(text, context, on_partial)
+        except Exception:
+            self._disable_primary()
+            return self.fallback.translate_stream(text, context, on_partial)
+
+    def close(self) -> None:
+        self.primary.close()
+        self.fallback.close()

@@ -11,7 +11,13 @@ from src.audio_capture import AudioCapture
 from src.buffer import AudioRingBuffer
 from src.config import Settings
 from src.stabilizer import UtteranceAssembler, WordStabilizer, join_word_tokens
-from src.translator import MiniMaxTranslator, MockTranslator, TranslationContext
+from src.translator import (
+    FallbackTranslator,
+    MiniMaxTranslator,
+    MockTranslator,
+    QwenMTTranslator,
+    TranslationContext,
+)
 from src.whisper_engine import WhisperEngine
 
 
@@ -46,17 +52,7 @@ class RealtimePipeline:
             settings.whisper_compute_type,
             project_dir / "models",
         )
-        self.translator = (
-            MockTranslator()
-            if force_mock or not settings.minimax_api_key
-            else MiniMaxTranslator(
-                settings.minimax_api_key,
-                settings.minimax_base_url,
-                settings.minimax_model,
-                settings.translation_timeout_seconds,
-                settings.translation_context_items,
-            )
-        )
+        self.translator, self.translator_name = self._build_translator(force_mock)
         self.using_mock = isinstance(self.translator, MockTranslator)
         self._translation_queue: queue.Queue[tuple[int, str] | None] = queue.Queue(
             maxsize=settings.translation_queue_size
@@ -74,6 +70,63 @@ class RealtimePipeline:
         self._transcribe_thread: threading.Thread | None = None
         self._translate_threads: list[threading.Thread] = []
         self._last_asr_seconds = 0.0
+
+    def _build_translator(self, force_mock: bool):
+        if force_mock:
+            return MockTranslator(), "模拟翻译"
+
+        qwen = (
+            QwenMTTranslator(
+                self.settings.qwen_api_key,
+                self.settings.qwen_base_url,
+                self.settings.qwen_model,
+                self.settings.translation_timeout_seconds,
+            )
+            if self.settings.qwen_api_key
+            else None
+        )
+        minimax = (
+            MiniMaxTranslator(
+                self.settings.minimax_api_key,
+                self.settings.minimax_base_url,
+                self.settings.minimax_model,
+                self.settings.translation_timeout_seconds,
+                self.settings.translation_context_items,
+            )
+            if self.settings.minimax_api_key
+            else None
+        )
+
+        provider = self.settings.translation_provider.lower()
+        if provider == "qwen" and qwen:
+            if minimax:
+                return (
+                    FallbackTranslator(
+                        qwen,
+                        minimax,
+                        self.settings.qwen_model,
+                        self.settings.minimax_model,
+                    ),
+                    self.settings.qwen_model,
+                )
+            return qwen, self.settings.qwen_model
+        if provider == "minimax" and minimax:
+            return minimax, self.settings.minimax_model
+        if qwen:
+            if minimax:
+                return (
+                    FallbackTranslator(
+                        qwen,
+                        minimax,
+                        self.settings.qwen_model,
+                        self.settings.minimax_model,
+                    ),
+                    self.settings.qwen_model,
+                )
+            return qwen, self.settings.qwen_model
+        if minimax:
+            return minimax, self.settings.minimax_model
+        return MockTranslator(), "模拟翻译"
 
     def start(self) -> None:
         if self._transcribe_thread and self._transcribe_thread.is_alive():
@@ -113,8 +166,12 @@ class RealtimePipeline:
         try:
             self.on_status(f"正在加载 Whisper：{self.settings.whisper_model}")
             self.whisper.load()
-            mode = "模拟翻译" if self.using_mock else f"MiniMax {self.settings.minimax_model}"
-            self.on_status(f"模型已加载 · {mode}")
+            prepare = getattr(self.translator, "prepare", None)
+            if prepare is not None:
+                self.on_status(f"正在检测翻译服务：{self.translator_name}")
+                prepare()
+                self.translator_name = self.translator.active_name
+            self.on_status(f"模型已加载 · {self.translator_name}")
             self.capture.start()
 
             stabilizer = WordStabilizer()

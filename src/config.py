@@ -30,6 +30,10 @@ class Settings:
     font_size_original: int = 20
     font_size_translation: int = 27
     background_opacity: float = 0.78
+    translation_provider: str = "auto"
+    qwen_api_key: str = ""
+    qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    qwen_model: str = "qwen-mt-lite"
     minimax_api_key: str = ""
     minimax_base_url: str = "https://api.minimax.io/v1"
     minimax_model: str = "MiniMax-M2.7-highspeed"
@@ -52,6 +56,17 @@ def load_settings(project_dir: Path) -> Settings:
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     _load_dotenv(project_dir / ".env")
 
+    payload["translation_provider"] = os.getenv(
+        "TRANSLATION_PROVIDER",
+        payload.get("translation_provider", Settings.translation_provider),
+    )
+    payload["qwen_api_key"] = os.getenv("QWEN_API_KEY", "")
+    payload["qwen_base_url"] = os.getenv(
+        "QWEN_BASE_URL", payload.get("qwen_base_url", Settings.qwen_base_url)
+    )
+    payload["qwen_model"] = os.getenv(
+        "QWEN_MODEL", payload.get("qwen_model", Settings.qwen_model)
+    )
     payload["minimax_api_key"] = os.getenv("MINIMAX_API_KEY", "")
     payload["minimax_base_url"] = os.getenv(
         "MINIMAX_BASE_URL", payload.get("minimax_base_url", Settings.minimax_base_url)
